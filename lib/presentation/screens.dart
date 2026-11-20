@@ -132,17 +132,23 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo=context.read<TaskRepository>();
-    return FutureBuilder<List<Map<String,Object?>>>(future:repo.dashboard(),builder:(ctx,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());final d=s.data!.first;return ListView(padding:const EdgeInsets.all(16),children:[
-      GridView.count(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),crossAxisCount:2,childAspectRatio:1.6,children:[
-        StatTile('Проекты',d['project_count']),StatTile('Всего задач',d['task_count']),StatTile('Завершено',d['done_count']),StatTile('В работе',d['open_count']),StatTile('Просрочено',d['overdue_count']),
-      ]),
-      const SizedBox(height:12),const Text('Задачи по приоритетам',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
-      FutureBuilder<List<Map<String,Object?>>>(future:repo.statsByPriority(),builder:(c,v)=>Column(children:(v.data??[]).map((r)=>ListTile(title:Text(r['priority'].toString()),trailing:Text(r['amount'].toString()))).toList())),
-      const Text('Задачи по исполнителям',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
-      FutureBuilder<List<Map<String,Object?>>>(future:repo.statsByAssignee(),builder:(c,v)=>Column(children:(v.data??[]).map((r)=>ListTile(title:Text(r['name'].toString()),trailing:Text(r['amount'].toString()))).toList())),
-      const Text('Прогресс проектов',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
-      FutureBuilder<List<Map<String,Object?>>>(future:repo.projectProgress(),builder:(c,v)=>Column(children:(v.data??[]).map((r){final total=(r['total'] as int?)??0;final done=(r['done'] as int?)??0;final p=total==0?0.0:done/total;return ListTile(title:Text(r['name'].toString()),subtitle:LinearProgressIndicator(value:p),trailing:Text('${(p*100).round()}%'));}).toList())),
-    ]);});
+    return StreamBuilder<List<Map<String,Object?>>>(stream:repo.watchDashboard(),builder:(ctx,s){
+      if(!s.hasData)return const Center(child:CircularProgressIndicator());
+      final d=s.data!.first;
+      return ListView(padding:const EdgeInsets.all(16),children:[
+        GridView.count(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),crossAxisCount:2,childAspectRatio:1.6,children:[
+          StatTile('Проекты',d['project_count']),StatTile('Всего задач',d['task_count']),StatTile('Завершено',d['done_count']),StatTile('В работе',d['open_count']),StatTile('Просрочено',d['overdue_count']),
+        ]),
+        const SizedBox(height:12),const Text('Задачи по приоритетам',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+        StreamBuilder<List<Map<String,Object?>>>(stream:repo.watchStatsByPriority(),builder:(c,v)=>Column(children:(v.data??[]).map((r)=>ListTile(title:Text(r['priority'].toString()),trailing:Text(r['amount'].toString()))).toList())),
+        const Text('Задачи по исполнителям',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+        StreamBuilder<List<Map<String,Object?>>>(stream:repo.watchStatsByAssignee(),builder:(c,v)=>Column(children:(v.data??[]).map((r)=>ListTile(title:Text(r['name'].toString()),trailing:Text(r['amount'].toString()))).toList())),
+        const Text('Прогресс проектов',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
+        StreamBuilder<List<Map<String,Object?>>>(stream:repo.watchProjectProgress(),builder:(c,v)=>Column(children:(v.data??[]).map((r){final total=(r['total'] as int?)??0;final done=(r['done'] as int?)??0;final p=total==0?0.0:done/total;return ListTile(title:Text(r['name'].toString()),subtitle:LinearProgressIndicator(value:p),trailing:Text('${(p*100).round()}%'));}).toList())),
+        const SizedBox(height:12),
+        OutlinedButton.icon(onPressed:()async{try{final result=await repo.compareIndexPerformance();if(ctx.mounted)showDialog(context:ctx,builder:(dctx)=>AlertDialog(title:const Text('Сравнение индексов'),content:Text('С индексом: ${result['withIndexMicros']} мкс\\nБез индекса: ${result['withoutIndexMicros']} мкс\\nПовторений: 20'),actions:[TextButton(onPressed:()=>Navigator.pop(dctx),child:const Text('Закрыть'))]));}catch(e){if(ctx.mounted)showError(ctx,e);}},icon:const Icon(Icons.speed),label:const Text('Сравнить запрос с индексом и без')),
+      ]);
+    });
   }
 }
 class StatTile extends StatelessWidget {
