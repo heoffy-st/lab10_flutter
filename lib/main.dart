@@ -9,7 +9,7 @@ void main() {
   final db = AppDatabase();
   runApp(Provider<TaskRepository>(
     create: (_) => TaskRepository(db),
-    dispose: (_, __) => db.close(),
+    dispose: (_, _) => db.close(),
     child: const TaskFlowApp(),
   ));
 }
