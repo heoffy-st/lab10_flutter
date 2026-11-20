@@ -110,21 +110,138 @@ Future<void> showTaskDetails(BuildContext context, Task task) async {
   )));
 }
 
-class ProjectsScreen extends StatelessWidget {
+class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
   @override
+  State<ProjectsScreen> createState() => _ProjectsScreenState();
+}
+class _ProjectsScreenState extends State<ProjectsScreen> {
+  String query = '';
+  @override
   Widget build(BuildContext context) {
-    final repo=context.read<TaskRepository>();
-    return Scaffold(backgroundColor:Colors.transparent,floatingActionButton:FloatingActionButton.extended(onPressed:() async {final users=await repo.watchUsers().first;if(!context.mounted)return;if(users.isEmpty){showError(context,'Сначала добавьте пользователя');return;}final n=TextEditingController();final d=TextEditingController();int owner=users.first.id;await showDialog(context:context,builder:(ctx)=>StatefulBuilder(builder:(ctx,set)=>AlertDialog(title:const Text('Новый проект'),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:n,decoration:const InputDecoration(labelText:'Название')),TextField(controller:d,decoration:const InputDecoration(labelText:'Описание')),DropdownButton<int>(value:owner,items:users.map((u)=>DropdownMenuItem(value:u.id,child:Text(u.name))).toList(),onChanged:(v)=>set(()=>owner=v??owner))]),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Отмена')),FilledButton(onPressed:()async{try{await repo.addProject(n.text,d.text,owner);if(ctx.mounted)Navigator.pop(ctx);}catch(e){if(ctx.mounted)showError(ctx,e);}},child:const Text('Создать'))])));},icon:const Icon(Icons.add),label:const Text('Проект')),body:StreamBuilder<List<Project>>(stream:repo.watchProjects(),builder:(ctx,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());if(s.data!.isEmpty)return const Center(child:Text('Проектов пока нет'));return ListView(padding:const EdgeInsets.all(12),children:s.data!.map((p)=>Card(child:ListTile(leading:const Icon(Icons.folder_outlined),title:Text(p.name),subtitle:Text(p.description),onTap:()=>showProjectTasks(ctx,p),trailing:PopupMenuButton<String>(onSelected:(v)async{try{if(v=='delete')await repo.deleteProject(p.id);if(v=='members')await manageMembersDialog(ctx,p);if(v=='edit')await editProjectDialog(ctx,p);if(v=='complete')await repo.updateProject(p.id,p.name,p.description,'completed');if(v=='archive')await repo.updateProject(p.id,p.name,p.description,'archived');}catch(e){if(ctx.mounted)showError(ctx,e);}},itemBuilder:(_)=>const [PopupMenuItem(value:'edit',child:Text('Редактировать')),PopupMenuItem(value:'members',child:Text('Участники проекта')),PopupMenuItem(value:'complete',child:Text('Завершить')),PopupMenuItem(value:'archive',child:Text('Архивировать')),PopupMenuItem(value:'delete',child:Text('Удалить'))])))).toList());}));
+    final repo = context.read<TaskRepository>();
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final users = await repo.watchUsers().first;
+          if (!context.mounted) return;
+          if (users.isEmpty) { showError(context, 'Сначала добавьте пользователя'); return; }
+          final name = TextEditingController();
+          final description = TextEditingController();
+          int? ownerId = await chooseUser(context, users, title: 'Выберите владельца проекта');
+          if (!context.mounted || ownerId == null) return;
+          await showDialog(context: context, builder: (ctx) => AlertDialog(
+            title: const Text('Новый проект'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'Название')),
+              TextField(controller: description, decoration: const InputDecoration(labelText: 'Описание')),
+              OutlinedButton.icon(onPressed: () async {
+                final selected = await chooseUser(ctx, users, title: 'Выберите владельца проекта', selectedId: ownerId);
+                if (selected != null) ownerId = selected;
+              }, icon: const Icon(Icons.person_search), label: const Text('Выбрать владельца')),
+            ]),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
+              FilledButton(onPressed: () async { try { await repo.addProject(name.text, description.text, ownerId!); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { if (ctx.mounted) showError(ctx, e); } }, child: const Text('Создать')),
+            ],
+          ));
+        },
+        icon: const Icon(Icons.add), label: const Text('Проект'),
+      ),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 8), child: TextField(
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Поиск проектов по названию или описанию', border: OutlineInputBorder()),
+          onChanged: (v) => setState(() => query = v),
+        )),
+        Expanded(child: StreamBuilder<List<Project>>(stream: repo.watchProjects(), builder: (ctx, snap) {
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          final projects = snap.data!.where((p) => p.name.toLowerCase().contains(query.toLowerCase()) || p.description.toLowerCase().contains(query.toLowerCase())).toList();
+          if (projects.isEmpty) return Center(child: Text(query.isEmpty ? 'Проектов пока нет' : 'Ничего не найдено'));
+          return ListView(padding: const EdgeInsets.all(12), children: projects.map((p) => Card(child: ListTile(
+            leading: const Icon(Icons.folder_outlined), title: Text(p.name), subtitle: Text(p.description),
+            onTap: () => showProjectTasks(ctx, p),
+            trailing: PopupMenuButton<String>(
+              onSelected: (v) async { try {
+                if (v == 'delete') await repo.deleteProject(p.id);
+                if (v == 'members') await manageMembersDialog(ctx, p);
+                if (v == 'edit') await editProjectDialog(ctx, p);
+                if (v == 'complete') await repo.updateProject(p.id, p.name, p.description, 'completed');
+                if (v == 'archive') await repo.updateProject(p.id, p.name, p.description, 'archived');
+              } catch (e) { if (ctx.mounted) showError(ctx, e); } },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Редактировать')),
+                PopupMenuItem(value: 'members', child: Text('Участники проекта')),
+                PopupMenuItem(value: 'complete', child: Text('Завершить')),
+                PopupMenuItem(value: 'archive', child: Text('Архивировать')),
+                PopupMenuItem(value: 'delete', child: Text('Удалить')),
+              ],
+            ),
+          ))).toList());
+        })),
+      ]),
+    );
   }
 }
 
-class UsersScreen extends StatelessWidget {
+class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
   @override
+  State<UsersScreen> createState() => _UsersScreenState();
+}
+class _UsersScreenState extends State<UsersScreen> {
+  String query = '';
+  @override
   Widget build(BuildContext context) {
-    final repo=context.read<TaskRepository>();
-    return Scaffold(backgroundColor:Colors.transparent,floatingActionButton:FloatingActionButton.extended(onPressed:()async{final n=TextEditingController();final e=TextEditingController();await showDialog(context:context,builder:(ctx)=>AlertDialog(title:const Text('Новый участник'),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:n,decoration:const InputDecoration(labelText:'Имя')),TextField(controller:e,decoration:const InputDecoration(labelText:'Email'),keyboardType:TextInputType.emailAddress)]),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Отмена')),FilledButton(onPressed:()async{try{await repo.addUser(n.text,e.text);if(ctx.mounted)Navigator.pop(ctx);}catch(err){if(ctx.mounted)showError(ctx,err);}},child:const Text('Добавить'))]));},icon:const Icon(Icons.person_add),label:const Text('Участник')),body:StreamBuilder<List<User>>(stream:repo.watchUsers(),builder:(ctx,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());return ListView(padding:const EdgeInsets.all(12),children:s.data!.map((u)=>Card(child:ListTile(leading:CircleAvatar(child:Text(u.name.isEmpty?'?':u.name[0].toUpperCase())),title:Text(u.name),subtitle:Text(u.email),trailing:PopupMenuButton<String>(onSelected:(v)async{if(v=='delete'){try{await repo.deleteUser(u.id);}catch(e){if(ctx.mounted)showError(ctx,e);}}if(v=='edit' && ctx.mounted) await editUserDialog(ctx,u);if(v=='tasks' && ctx.mounted) await showUserTasks(ctx,u);},itemBuilder:(_)=>const [PopupMenuItem(value:'edit',child:Text('Редактировать')),PopupMenuItem(value:'tasks',child:Text('Задачи пользователя')),PopupMenuItem(value:'delete',child:Text('Удалить'))])))).toList());}));
+    final repo = context.read<TaskRepository>();
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final name = TextEditingController();
+          final email = TextEditingController();
+          await showDialog(context: context, builder: (ctx) => AlertDialog(
+            title: const Text('Новый участник'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'Имя')),
+              TextField(controller: email, decoration: const InputDecoration(labelText: 'Email'), keyboardType: TextInputType.emailAddress),
+            ]),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
+              FilledButton(onPressed: () async { try { await repo.addUser(name.text, email.text); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { if (ctx.mounted) showError(ctx, e); } }, child: const Text('Добавить')),
+            ],
+          ));
+        },
+        icon: const Icon(Icons.person_add), label: const Text('Участник'),
+      ),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 8), child: TextField(
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Поиск по имени или email', border: OutlineInputBorder()),
+          onChanged: (v) => setState(() => query = v),
+        )),
+        Expanded(child: StreamBuilder<List<User>>(stream: repo.watchUsers(), builder: (ctx, snap) {
+          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          final users = snap.data!.where((u) => u.name.toLowerCase().contains(query.toLowerCase()) || u.email.toLowerCase().contains(query.toLowerCase())).toList();
+          if (users.isEmpty) return Center(child: Text(query.isEmpty ? 'Пользователей пока нет' : 'Ничего не найдено'));
+          return ListView.builder(padding: const EdgeInsets.all(12), itemCount: users.length, itemBuilder: (ctx, i) {
+            final u = users[i];
+            return Card(child: ListTile(
+              leading: CircleAvatar(child: Text(u.name.isEmpty ? '?' : u.name[0].toUpperCase())),
+              title: Text(u.name), subtitle: Text(u.email),
+              trailing: PopupMenuButton<String>(onSelected: (v) async {
+                if (v == 'delete') { try { await repo.deleteUser(u.id); } catch (e) { if (ctx.mounted) showError(ctx, e); } }
+                if (v == 'edit' && ctx.mounted) await editUserDialog(ctx, u);
+                if (v == 'tasks' && ctx.mounted) await showUserTasks(ctx, u);
+              }, itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Редактировать')),
+                PopupMenuItem(value: 'tasks', child: Text('Задачи пользователя')),
+                PopupMenuItem(value: 'delete', child: Text('Удалить')),
+              ]),
+            ));
+          });
+        })),
+      ]),
+    );
   }
 }
 
@@ -166,6 +283,28 @@ class TrashScreen extends StatelessWidget {
     final repo=context.read<TaskRepository>();
     return StreamBuilder<List<Task>>(stream:repo.watchTasks(trash:true),builder:(ctx,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());if(s.data!.isEmpty)return const Center(child:Text('Корзина пуста'));return ListView(children:s.data!.map((t)=>Card(child:ListTile(title:Text(t.title),subtitle:Text(t.description),trailing:Wrap(children:[IconButton(tooltip:'Восстановить',icon:const Icon(Icons.restore),onPressed:()=>repo.restoreTask(t.id)),IconButton(tooltip:'Удалить навсегда',icon:const Icon(Icons.delete_forever),onPressed:()=>repo.permanentlyDeleteTask(t.id))])))).toList());});
   }
+}
+
+
+Future<int?> chooseUser(BuildContext context, List<User> users, {required String title, int? selectedId}) {
+  return showDialog<int>(context: context, builder: (dialogContext) {
+    String query = '';
+    return StatefulBuilder(builder: (ctx, setDialogState) {
+      final filtered = users.where((u) => u.name.toLowerCase().contains(query.toLowerCase()) || u.email.toLowerCase().contains(query.toLowerCase()) || u.id.toString() == query).toList();
+      return AlertDialog(
+        title: Text(title),
+        content: SizedBox(width: 420, height: 420, child: Column(children: [
+          TextField(autofocus: true, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Имя, email или ID', border: OutlineInputBorder()), onChanged: (v) => setDialogState(() => query = v)),
+          const SizedBox(height: 8),
+          Expanded(child: filtered.isEmpty ? const Center(child: Text('Ничего не найдено')) : ListView.builder(itemCount: filtered.length, itemBuilder: (ctx, i) {
+            final u = filtered[i];
+            return ListTile(selected: u.id == selectedId, leading: CircleAvatar(child: Text(u.name.isEmpty ? '?' : u.name[0].toUpperCase())), title: Text(u.name), subtitle: Text('${u.email} • ID ${u.id}'), onTap: () => Navigator.pop(dialogContext, u.id));
+          })),
+        ])),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Отмена'))],
+      );
+    });
+  });
 }
 
 Future<void> manageMembersDialog(BuildContext context, Project project) async {
