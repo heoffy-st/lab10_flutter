@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../data/task_repository.dart';
 import 'screens.dart';
 
 class TaskFlowApp extends StatelessWidget {
