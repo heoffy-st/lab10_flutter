@@ -159,6 +159,36 @@ class TaskRepository {
     await db.batch((b) => b.insertAll(db.tasks, List.generate(10000, (i) => TasksCompanion.insert(title: 'Performance task $i', description: Value('Generated task for search benchmark'), projectId: projectRows[i % 100].id, assigneeId: Value(userRows[i % 1000].id), priority: Value(['low','medium','high','critical'][i % 4]), status: Value(['todo','inProgress','done'][i % 3]), deadline: Value(now + (i % 30) * 86400000), createdAt: now, updatedAt: now))));
   }
 
+  Stream<List<Map<String, Object?>>> watchDashboard() => db.customSelect('''
+    SELECT (SELECT COUNT(*) FROM projects) AS project_count,
+      (SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL) AS task_count,
+      (SELECT COUNT(*) FROM tasks WHERE status = 'done' AND deleted_at IS NULL) AS done_count,
+      (SELECT COUNT(*) FROM tasks WHERE status NOT IN ('done','cancelled') AND deleted_at IS NULL) AS open_count,
+      (SELECT COUNT(*) FROM tasks WHERE deadline < ? AND status NOT IN ('done','cancelled') AND deleted_at IS NULL) AS overdue_count
+  ''', variables: [Variable.withInt(_now())], readsFrom: {db.projects, db.tasks})
+      .watch().map((rows) => rows.map((r) => r.data).toList());
+
+  Stream<List<Map<String, Object?>>> watchStatsByPriority() => db.customSelect("SELECT priority, COUNT(*) AS amount FROM tasks WHERE deleted_at IS NULL GROUP BY priority", readsFrom: {db.tasks}).watch().map((rows) => rows.map((r) => r.data).toList());
+  Stream<List<Map<String, Object?>>> watchStatsByAssignee() => db.customSelect("SELECT u.name, COUNT(t.id) AS amount FROM users u LEFT JOIN tasks t ON t.assignee_id = u.id AND t.deleted_at IS NULL GROUP BY u.id ORDER BY amount DESC", readsFrom: {db.users, db.tasks}).watch().map((rows) => rows.map((r) => r.data).toList());
+  Stream<List<Map<String, Object?>>> watchProjectProgress() => db.customSelect("SELECT p.id, p.name, COUNT(t.id) AS total, SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted_at IS NULL GROUP BY p.id", readsFrom: {db.projects, db.tasks}).watch().map((rows) => rows.map((r) => r.data).toList());
+
+  Future<Map<String, int>> compareIndexPerformance({int repetitions = 20}) async {
+    final projects = await db.select(db.projects).get();
+    if (projects.isEmpty) throw StateError('Сначала добавьте проект и задачи');
+    final projectId = projects.first.id;
+    final indexed = Stopwatch()..start();
+    for (var i = 0; i < repetitions; i++) {
+      await db.customSelect('SELECT COUNT(*) AS amount FROM tasks INDEXED BY tasks_project_idx WHERE project_id = ?', variables: [Variable.withInt(projectId)]).get();
+    }
+    indexed.stop();
+    final scan = Stopwatch()..start();
+    for (var i = 0; i < repetitions; i++) {
+      await db.customSelect('SELECT COUNT(*) AS amount FROM tasks NOT INDEXED WHERE project_id = ?', variables: [Variable.withInt(projectId)]).get();
+    }
+    scan.stop();
+    return {'withIndexMicros': indexed.elapsedMicroseconds, 'withoutIndexMicros': scan.elapsedMicroseconds};
+  }
+
   Future<List<Map<String, Object?>>> statsByPriority() async => (await db.customSelect("SELECT priority, COUNT(*) AS amount FROM tasks WHERE deleted_at IS NULL GROUP BY priority").get()).map((r) => r.data).toList();
   Future<List<Map<String, Object?>>> statsByAssignee() async => (await db.customSelect("SELECT u.name, COUNT(t.id) AS amount FROM users u LEFT JOIN tasks t ON t.assignee_id = u.id AND t.deleted_at IS NULL GROUP BY u.id ORDER BY amount DESC").get()).map((r) => r.data).toList();
   Future<List<Map<String, Object?>>> projectProgress() async => (await db.customSelect("SELECT p.id, p.name, COUNT(t.id) AS total, SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted_at IS NULL GROUP BY p.id").get()).map((r) => r.data).toList();
