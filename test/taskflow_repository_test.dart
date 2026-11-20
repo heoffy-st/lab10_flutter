@@ -127,6 +127,30 @@ void main() {
     expect(summary.single['project_count'], 1);
     expect(summary.single['task_count'], 1);
   });
+
+  test('migration v1 to v2 adds priority with medium default and preserves task', () async {
+    final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
+      raw.execute('''CREATE TABLE tasks (
+        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        project_id INTEGER NOT NULL,
+        assignee_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'todo',
+        deadline INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER
+      )''');
+      raw.execute("INSERT INTO tasks (id,title,description,project_id,status,created_at,updated_at) VALUES (1,'Legacy task','','1','todo',1,1)");
+      raw.execute('PRAGMA user_version = 1');
+    }));
+    final rows = await legacy.customSelect('SELECT id, title, priority FROM tasks').get();
+    expect(rows.single.data['id'], 1);
+    expect(rows.single.data['title'], 'Legacy task');
+    expect(rows.single.data['priority'], 'medium');
+    await legacy.close();
+  });
   test('schema version is configured for the priority migration', () {
     expect(db.schemaVersion, 2);
   });
