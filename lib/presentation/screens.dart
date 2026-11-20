@@ -105,7 +105,7 @@ Future<void> showTaskDetails(BuildContext context, Task task) async {
       const Text('Комментарии', style: TextStyle(fontWeight: FontWeight.bold)),
       StreamBuilder<List<Comment>>(stream: repo.watchComments(task.id), builder: (ctx,s) => Column(children: (s.data ?? []).map((c) => ListTile(title:Text(c.body),subtitle:Text('Автор ID: ${c.authorId}'),trailing:IconButton(icon:const Icon(Icons.delete_outline),onPressed:() async {try{await repo.deleteComment(c.id,authorId);}catch(e){if(ctx.mounted)showError(ctx,e);}}))).toList())),
       TextField(controller:comment,decoration:const InputDecoration(labelText:'Новый комментарий')),
-      DropdownButton<int>(value: authorId == 0 ? null : authorId, items: users.map((u)=>DropdownMenuItem(value:u.id,child:Text(u.name))).toList(), onChanged:(v)=>set(()=>authorId=v??authorId)),
+      OutlinedButton.icon(onPressed:() async { final id=await chooseUser(ctx,users,title:'Автор комментария',selectedId:authorId==0?null:authorId); if(id!=null)set(()=>authorId=id); },icon:const Icon(Icons.person_search),label:Text(authorId==0?'Выбрать автора':'Автор: ${users.firstWhere((u)=>u.id==authorId).name}')),
       const Divider(), const Text('История изменений',style:TextStyle(fontWeight:FontWeight.bold)),
       StreamBuilder<List<TaskHistoryData>>(stream:repo.watchHistory(task.id),builder:(ctx,s)=>Column(children:(s.data??[]).map((h)=>ListTile(dense:true,title:Text('${h.previousStatus??"—"} → ${h.newStatus}'),subtitle:Text(h.details.isEmpty?DateTime.fromMillisecondsSinceEpoch(h.changedAt).toString():h.details))).toList())),
       const Divider(), const Text('Вложения',style:TextStyle(fontWeight:FontWeight.bold)),
@@ -361,9 +361,15 @@ Future<void> showUserTasks(BuildContext context, User user) async {
 Future<void> reassignTaskDialog(BuildContext context, Task task) async {
   final repo=context.read<TaskRepository>();
   final members=await repo.projectMembers(task.projectId);
+  final allUsers=await repo.watchUsers().first;
+  final memberIds=members.map((m)=>m['id'] as int).toSet();
+  final available=allUsers.where((u)=>memberIds.contains(u.id)).toList();
   if(!context.mounted)return;
   int? selected=task.assigneeId;
-  await showDialog(context:context,builder:(ctx)=>StatefulBuilder(builder:(ctx,set)=>AlertDialog(title:const Text('Назначить исполнителя'),content:DropdownButton<int?>(isExpanded:true,value:selected,items:[const DropdownMenuItem<int?>(value:null,child:Text('Не назначен')),...members.map((m)=>DropdownMenuItem<int?>(value:m['id'] as int,child:Text('${m['name']} (${m['role']})')))],onChanged:(v)=>set(()=>selected=v)),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Отмена')),FilledButton(onPressed:()async{try{final users=await repo.watchUsers().first;await repo.reassignTask(task.id,selected,changedBy:users.isEmpty?null:users.first.id);if(ctx.mounted)Navigator.pop(ctx);}catch(e){if(ctx.mounted)showError(ctx,e);}},child:const Text('Сохранить'))])));
+  await showDialog(context:context,builder:(ctx)=>StatefulBuilder(builder:(ctx,set)=>AlertDialog(title:const Text('Назначить исполнителя'),content:Column(mainAxisSize:MainAxisSize.min,children:[
+    OutlinedButton.icon(onPressed:() async {final id=await chooseUser(ctx,available,title:'Выберите исполнителя',selectedId:selected);if(id!=null)set(()=>selected=id);},icon:const Icon(Icons.person_search),label:Text(selected==null?'Не назначен':available.firstWhere((u)=>u.id==selected).name)),
+    TextButton(onPressed:()=>set(()=>selected=null),child:const Text('Снять назначение')),
+  ]),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Отмена')),FilledButton(onPressed:()async{try{await repo.reassignTask(task.id,selected,changedBy:allUsers.isEmpty?null:allUsers.first.id);if(ctx.mounted)Navigator.pop(ctx);}catch(e){if(ctx.mounted)showError(ctx,e);}},child:const Text('Сохранить'))])));
 }
 
 Future<void> editProjectDialog(BuildContext context, Project project) async {
