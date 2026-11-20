@@ -109,7 +109,7 @@ class TaskRepository {
       final task = await (db.select(db.tasks)..where((t) => t.id.equals(taskId))).getSingle();
       if (userId != null && !await isMember(task.projectId, userId)) throw StateError('Исполнитель не состоит в проекте');
       if (userId != null && task.deadline != null) {
-        final assigned = await (db.select(db.tasks)..where((t) => t.id.isNotValue(taskId) & t.assigneeId.equals(userId) & t.deadline.equals(task.deadline!) & t.status.isNotIn(['done','cancelled']) & t.deletedAt.isNull())).get();
+        final assigned = await (db.select(db.tasks)..where((t) => t.id.isNotIn([taskId]) & t.assigneeId.equals(userId) & t.deadline.equals(task.deadline!) & t.status.isNotIn(['done','cancelled']) & t.deletedAt.isNull())).get();
         if (assigned.length >= 3) throw StateError('У исполнителя уже есть 3 незавершённые задачи с этим дедлайном');
       }
       final now = _now();
