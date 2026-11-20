@@ -77,8 +77,14 @@ Future<void> createTaskDialog(BuildContext context) async {
     title: const Text('Новая задача'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
       TextField(controller: title, decoration: const InputDecoration(labelText: 'Название')),
       TextField(controller: desc, decoration: const InputDecoration(labelText: 'Описание'), maxLines: 3),
-      DropdownButtonFormField<int>(value: projectId, decoration: const InputDecoration(labelText: 'Проект'), items: projects.map((p) => DropdownMenuItem(value: p.id, child: Text(p.name))).toList(), onChanged: (v) { if (v != null) set(() => projectId = v); }),
-      DropdownButtonFormField<int?>(value: userId, decoration: const InputDecoration(labelText: 'Исполнитель'), items: [const DropdownMenuItem(value: null, child: Text('Не назначен')), ...users.map((u) => DropdownMenuItem(value: u.id, child: Text(u.name)))], onChanged: (v) => set(() => userId = v)),
+      OutlinedButton.icon(
+        onPressed: () async { final selected = await chooseProject(ctx, projects, selectedId: projectId); if (selected != null) set(() => projectId = selected); },
+        icon: const Icon(Icons.folder_open), label: Text('Проект: ${projects.firstWhere((p) => p.id == projectId).name}'),
+      ),
+      OutlinedButton.icon(
+        onPressed: () async { final selected = await chooseUser(ctx, users, title: 'Выберите исполнителя', selectedId: userId); set(() => userId = selected); },
+        icon: const Icon(Icons.person_search), label: Text(userId == null ? 'Исполнитель: не назначен' : 'Исполнитель: ${users.firstWhere((u) => u.id == userId).name}'),
+      ),
       DropdownButtonFormField<String>(value: priority, decoration: const InputDecoration(labelText: 'Приоритет'), items: const [DropdownMenuItem(value:'low',child:Text('Низкий')),DropdownMenuItem(value:'medium',child:Text('Средний')),DropdownMenuItem(value:'high',child:Text('Высокий')),DropdownMenuItem(value:'critical',child:Text('Критический'))], onChanged: (v) => set(() => priority = v ?? 'medium')),
       TextButton.icon(onPressed: () async { final d = await showDatePicker(context: ctx, firstDate: DateTime.now().subtract(const Duration(days: 1)), lastDate: DateTime.now().add(const Duration(days: 3650)), initialDate: DateTime.now()); if (d != null) set(() => deadline = d); }, icon: const Icon(Icons.calendar_month), label: Text(deadline == null ? 'Выбрать дедлайн' : deadline!.toString().substring(0,10))),
     ])),
@@ -286,6 +292,24 @@ class TrashScreen extends StatelessWidget {
 }
 
 
+Future<int?> chooseProject(BuildContext context, List<Project> projects, {int? selectedId}) {
+  return showDialog<int>(context: context, builder: (dialogContext) {
+    String query = '';
+    return StatefulBuilder(builder: (ctx, setDialogState) {
+      final filtered = projects.where((p) => p.name.toLowerCase().contains(query.toLowerCase()) || p.description.toLowerCase().contains(query.toLowerCase()) || p.id.toString() == query).toList();
+      return AlertDialog(
+        title: const Text('Выберите проект'),
+        content: SizedBox(width: 420, height: 420, child: Column(children: [
+          TextField(autofocus: true, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Название проекта или ID', border: OutlineInputBorder()), onChanged: (v) => setDialogState(() => query = v)),
+          const SizedBox(height: 8),
+          Expanded(child: filtered.isEmpty ? const Center(child: Text('Ничего не найдено')) : ListView.builder(itemCount: filtered.length, itemBuilder: (ctx, i) { final p=filtered[i]; return ListTile(selected:p.id==selectedId,title:Text(p.name),subtitle:Text('ID ${p.id} • ${p.description}'),onTap:()=>Navigator.pop(dialogContext,p.id)); })),
+        ])),
+        actions: [TextButton(onPressed:()=>Navigator.pop(dialogContext),child:const Text('Отмена'))],
+      );
+    });
+  });
+}
+
 Future<int?> chooseUser(BuildContext context, List<User> users, {required String title, int? selectedId}) {
   return showDialog<int>(context: context, builder: (dialogContext) {
     String query = '';
@@ -318,7 +342,7 @@ Future<void> manageMembersDialog(BuildContext context, Project project) async {
     content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
       FutureBuilder<List<Map<String,Object?>>>(future: repo.projectMembers(project.id), builder: (ctx,s) => Column(children: (s.data ?? []).map((m) => ListTile(dense:true,title:Text(m['name'].toString()),subtitle:Text('${m['email']} • ${m['role']}'),trailing:IconButton(icon:const Icon(Icons.person_remove_outlined),onPressed:() async {try{await repo.removeMember(project.id,m['id'] as int);set((){});}catch(e){if(ctx.mounted)showError(ctx,e);}}))).toList())),
       const Divider(),
-      if(users.isNotEmpty) DropdownButton<int>(value:selected, isExpanded:true, items:users.map((u)=>DropdownMenuItem(value:u.id,child:Text(u.name))).toList(),onChanged:(v)=>set(()=>selected=v)),
+      if(users.isNotEmpty) OutlinedButton.icon(onPressed:() async { final id=await chooseUser(ctx,users,title:'Добавить участника',selectedId:selected); if(id!=null)set(()=>selected=id); },icon:const Icon(Icons.person_search),label:Text(selected==null?'Выбрать участника':'Участник: ${users.firstWhere((u)=>u.id==selected).name}')),
       DropdownButton<String>(value:role,isExpanded:true,items:const [DropdownMenuItem(value:'Owner',child:Text('Owner')),DropdownMenuItem(value:'Admin',child:Text('Admin')),DropdownMenuItem(value:'Member',child:Text('Member'))],onChanged:(v)=>set(()=>role=v??'Member')),
     ])),
     actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Закрыть')),FilledButton(onPressed:selected==null?null:()async{try{await repo.addMember(project.id,selected!,role);set((){});}catch(e){if(ctx.mounted)showError(ctx,e);}},child:const Text('Добавить участника'))],
