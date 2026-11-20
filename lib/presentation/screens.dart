@@ -15,6 +15,7 @@ class _TasksScreenState extends State<TasksScreen> {
   String? status;
   String? priority;
   int? assignee;
+  bool sortDeadline = false;
   @override
   Widget build(BuildContext context) {
     final repo = context.read<TaskRepository>();
@@ -25,7 +26,12 @@ class _TasksScreenState extends State<TasksScreen> {
         const SizedBox(width: 8),
         Expanded(child: DropdownButtonFormField<String?>(value: priority, decoration: const InputDecoration(labelText: 'Приоритет', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)), items: const [DropdownMenuItem(value: null, child: Text('Все')), DropdownMenuItem(value: 'low', child: Text('Низкий')), DropdownMenuItem(value: 'medium', child: Text('Средний')), DropdownMenuItem(value: 'high', child: Text('Высокий')), DropdownMenuItem(value: 'critical', child: Text('Критический'))], onChanged: (v) => setState(() => priority = v))),
       ])),
-      Expanded(child: StreamBuilder<List<Task>>(stream: repo.watchTasks(status: status, priority: priority, assigneeId: assignee, query: search), builder: (context, snap) {
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Row(children: [
+        Expanded(child: StreamBuilder<List<User>>(stream: repo.watchUsers(), builder: (ctx, users) => DropdownButtonFormField<int?>(value: assignee, isExpanded: true, decoration: const InputDecoration(labelText: 'Исполнитель', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)), items: [const DropdownMenuItem<int?>(value: null, child: Text('Все исполнители')), ...(users.data ?? []).map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name)))], onChanged: (v) => setState(() => assignee = v)))),
+        const SizedBox(width: 8),
+        IconButton(tooltip: sortDeadline ? 'Сначала дедлайн' : 'Сначала новые', onPressed: () => setState(() => sortDeadline = !sortDeadline), icon: Icon(sortDeadline ? Icons.event : Icons.schedule)),
+      ])),
+      Expanded(child: StreamBuilder<List<Task>>(stream: repo.watchTasks(status: status, priority: priority, assigneeId: assignee, query: search, sortByDeadline: sortDeadline), builder: (context, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         final tasks = snap.data!;
         if (tasks.isEmpty) return const Center(child: Text('Задач пока нет. Создайте первую задачу.'));
@@ -45,7 +51,7 @@ class TaskCard extends StatelessWidget {
     final statusNames = {'todo':'Ожидает','inProgress':'В работе','done':'Готово','cancelled':'Отменено'};
     final priorityNames = {'low':'Низкий','medium':'Средний','high':'Высокий','critical':'Критический'};
     return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [Expanded(child: Text(task.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold))), PopupMenuButton<String>(onSelected: (v) async { try { if (v == 'delete') { await repo.softDeleteTask(task.id); } else if (v == 'undo') { await repo.undoStatus(task.id); } else if (v == 'comments') { if (context.mounted) showTaskDetails(context, task); } else if (v == 'edit') { if (context.mounted) editTaskDialog(context, task); } } catch (e) { if (context.mounted) showError(context, e); } }, itemBuilder: (_) => const [PopupMenuItem(value:'edit', child: Text('Редактировать')), PopupMenuItem(value:'comments', child: Text('Комментарии и история')), PopupMenuItem(value:'undo', child: Text('Отменить статус')), PopupMenuItem(value:'delete', child: Text('В корзину'))])]),
+      Row(children: [Expanded(child: Text(task.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold))), PopupMenuButton<String>(onSelected: (v) async { try { if (v == 'delete') { await repo.softDeleteTask(task.id); } else if (v == 'undo') { await repo.undoStatus(task.id); } else if (v == 'comments') { if (context.mounted) showTaskDetails(context, task); } else if (v == 'edit') { if (context.mounted) editTaskDialog(context, task); } else if (v == 'assign') { if (context.mounted) reassignTaskDialog(context, task); } } catch (e) { if (context.mounted) showError(context, e); } }, itemBuilder: (_) => const [PopupMenuItem(value:'edit', child: Text('Редактировать')), PopupMenuItem(value:'assign', child: Text('Назначить исполнителя')), PopupMenuItem(value:'comments', child: Text('Комментарии и история')), PopupMenuItem(value:'undo', child: Text('Отменить статус')), PopupMenuItem(value:'delete', child: Text('В корзину'))])]),
       if (task.description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(task.description, maxLines: 2, overflow: TextOverflow.ellipsis)),
       const SizedBox(height: 8),
       Wrap(spacing: 8, runSpacing: 6, children: [
@@ -179,4 +185,12 @@ Future<void> editUserDialog(BuildContext context, User user) async {
 Future<void> showUserTasks(BuildContext context, User user) async {
   final repo=context.read<TaskRepository>();
   await showDialog(context:context,builder:(ctx)=>AlertDialog(title:Text('Задачи: ${user.name}'),content:SizedBox(width:420,height:400,child:StreamBuilder<List<Task>>(stream:repo.watchTasks(assigneeId:user.id),builder:(ctx,s){if(!s.hasData)return const Center(child:CircularProgressIndicator());if(s.data!.isEmpty)return const Center(child:Text('Назначенных задач нет'));return ListView(children:s.data!.map((t)=>ListTile(title:Text(t.title),subtitle:Text(t.status))).toList());})),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Закрыть'))]));
+}
+
+Future<void> reassignTaskDialog(BuildContext context, Task task) async {
+  final repo=context.read<TaskRepository>();
+  final members=await repo.projectMembers(task.projectId);
+  if(!context.mounted)return;
+  int? selected=task.assigneeId;
+  await showDialog(context:context,builder:(ctx)=>StatefulBuilder(builder:(ctx,set)=>AlertDialog(title:const Text('Назначить исполнителя'),content:DropdownButton<int?>(isExpanded:true,value:selected,items:[const DropdownMenuItem<int?>(value:null,child:Text('Не назначен')),...members.map((m)=>DropdownMenuItem<int?>(value:m['id'] as int,child:Text('${m['name']} (${m['role']})')))],onChanged:(v)=>set(()=>selected=v)),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Отмена')),FilledButton(onPressed:()async{try{await repo.reassignTask(task.id,selected);if(ctx.mounted)Navigator.pop(ctx);}catch(e){if(ctx.mounted)showError(ctx,e);}},child:const Text('Сохранить'))])));
 }
