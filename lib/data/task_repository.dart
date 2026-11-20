@@ -113,6 +113,7 @@ class TaskRepository {
       if (history == null || history.previousStatus == null) throw StateError('Нет изменений для отмены');
       final current = await (db.select(db.tasks)..where((t) => t.id.equals(taskId))).getSingle();
       final now = _now();
+      await (db.update(db.taskHistory)..where((h) => h.id.equals(history.id))).write(const TaskHistoryCompanion(details: Value('undone')));
       await (db.update(db.tasks)..where((t) => t.id.equals(taskId))).write(TasksCompanion(status: Value(history.previousStatus!), updatedAt: Value(now)));
       await db.into(db.taskHistory).insert(TaskHistoryCompanion.insert(taskId: taskId, previousStatus: Value(current.status), newStatus: history.previousStatus!, changedBy: Value(changedBy), changedAt: now, details: const Value('Отмена последнего изменения')));
     });
@@ -137,6 +138,20 @@ class TaskRepository {
   Future<int> addAttachment(int taskId, String name, String path) => db.into(db.attachments).insert(AttachmentsCompanion.insert(taskId: taskId, fileName: name, localPath: path, addedAt: _now()));
   Future<void> deleteAttachment(int id) => (db.delete(db.attachments)..where((a) => a.id.equals(id))).go();
   Stream<List<TaskHistoryData>> watchHistory(int taskId) => (db.select(db.taskHistory)..where((h) => h.taskId.equals(taskId))..orderBy([(h) => OrderingTerm.desc(h.changedAt)])).watch();
+
+  Future<List<Map<String, Object?>>> projectMembers(int projectId) async =>
+      (await db.customSelect('SELECT u.id, u.name, u.email, pm.role FROM project_members pm JOIN users u ON u.id = pm.user_id WHERE pm.project_id = ?', variables: [Variable.withInt(projectId)]).get()).map((r) => r.data).toList();
+
+  Future<void> seedPerformanceData() async {
+    if ((await db.select(db.users).get()).isNotEmpty) throw StateError('Для тестового наполнения нужна пустая база');
+    await db.batch((b) => b.insertAll(db.users, List.generate(1000, (i) => UsersCompanion.insert(name: 'User $i', email: 'user$i@taskflow.local', registeredAt: _now()))));
+    final userRows = await db.select(db.users).get();
+    await db.batch((b) => b.insertAll(db.projects, List.generate(100, (i) => ProjectsCompanion.insert(name: 'Project $i', description: Value('Performance project'), createdAt: _now()))));
+    final projectRows = await db.select(db.projects).get();
+    await db.batch((b) => b.insertAll(db.projectMembers, List.generate(100, (i) => ProjectMembersCompanion.insert(projectId: projectRows[i].id, userId: userRows[i].id, role: const Value('Owner')))));
+    final now = _now();
+    await db.batch((b) => b.insertAll(db.tasks, List.generate(10000, (i) => TasksCompanion.insert(title: 'Performance task $i', description: Value('Generated task for search benchmark'), projectId: projectRows[i % 100].id, assigneeId: Value(userRows[i % 1000].id), priority: Value(['low','medium','high','critical'][i % 4]), status: Value(['todo','inProgress','done'][i % 3]), deadline: Value(now + (i % 30) * 86400000), createdAt: now, updatedAt: now))));
+  }
 
   Future<List<Map<String, Object?>>> statsByPriority() async => (await db.customSelect("SELECT priority, COUNT(*) AS amount FROM tasks WHERE deleted_at IS NULL GROUP BY priority").get()).map((r) => r.data).toList();
   Future<List<Map<String, Object?>>> statsByAssignee() async => (await db.customSelect("SELECT u.name, COUNT(t.id) AS amount FROM users u LEFT JOIN tasks t ON t.assignee_id = u.id AND t.deleted_at IS NULL GROUP BY u.id ORDER BY amount DESC").get()).map((r) => r.data).toList();
