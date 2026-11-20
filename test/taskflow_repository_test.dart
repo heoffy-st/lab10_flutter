@@ -121,6 +121,21 @@ void main() {
     final files = await (db.select(db.attachments)..where((a) => a.taskId.equals(id))).get();
     expect(files.single.localPath, '/local/notes.txt');
   });
+  test('dashboard SQL counts projects and tasks', () async {
+    await repo.createTask(title: 'Dashboard task', description: '', projectId: projectId);
+    final summary = await repo.dashboard();
+    expect(summary.single['project_count'], 1);
+    expect(summary.single['task_count'], 1);
+  });
+  test('schema version is configured for the priority migration', () {
+    expect(db.schemaVersion, 2);
+  });
+  test('soft-deleted tasks are excluded from the normal stream', () async {
+    final id = await repo.createTask(title: 'Hidden task', description: '', projectId: projectId);
+    await repo.softDeleteTask(id);
+    expect(await repo.watchTasks().first, isEmpty);
+    expect((await repo.watchTasks(trash: true).first).single.id, id);
+  });
   test('filters task list by title search', () async {
     await repo.createTask(title: 'Alpha report', description: '', projectId: projectId);
     await repo.createTask(title: 'Beta report', description: '', projectId: projectId);
