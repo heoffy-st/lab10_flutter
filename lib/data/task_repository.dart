@@ -9,10 +9,10 @@ class TaskRepository {
   Stream<List<Project>> watchProjects() => db.select(db.projects).watch();
   Stream<List<User>> watchUsers() => db.select(db.users).watch();
 
-  Stream<List<Task>> watchTasks({int? projectId, String? status, String? priority, int? assigneeId, String query = '', bool trash = false, int limit = 30, int offset = 0}) {
+  Stream<List<Task>> watchTasks({int? projectId, String? status, String? priority, int? assigneeId, String query = '', bool trash = false, bool sortByDeadline = false, int limit = 30, int offset = 0}) {
     final q = db.select(db.tasks)
       ..limit(limit, offset: offset)
-      ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]);
+      ..orderBy([ (t) => sortByDeadline ? OrderingTerm.asc(t.deadline) : OrderingTerm.desc(t.createdAt) ]);
     q.where((t) {
       Expression<bool> filter = trash ? t.deletedAt.isNotNull() : t.deletedAt.isNull();
       if (projectId != null) filter = filter & t.projectId.equals(projectId);
@@ -52,10 +52,12 @@ class TaskRepository {
   }
   Future<void> updateProject(int id, String name, String description, String status, {int? dueAt}) async {
     if (name.trim().isEmpty) throw ArgumentError('Название проекта обязательно');
+    if (!['active','completed','archived'].contains(status)) throw ArgumentError('Некорректный статус проекта');
     await (db.update(db.projects)..where((t) => t.id.equals(id))).write(ProjectsCompanion(name: Value(name.trim()), description: Value(description.trim()), status: Value(status), dueAt: Value(dueAt)));
   }
   Future<void> deleteProject(int id) => (db.delete(db.projects)..where((t) => t.id.equals(id))).go();
   Future<void> addMember(int projectId, int userId, String role) async {
+    if (!['Owner','Admin','Member'].contains(role)) throw ArgumentError('Некорректная роль участника');
     final project = await (db.select(db.projects)..where((t) => t.id.equals(projectId))).getSingleOrNull();
     final user = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
     if (project == null || user == null) throw StateError('Проект или пользователь не существует');
@@ -71,6 +73,8 @@ class TaskRepository {
 
   Future<int> createTask({required String title, required String description, required int projectId, int? assigneeId, String priority = 'medium', String status = 'todo', int? deadline, int? changedBy}) async {
     if (title.trim().isEmpty) throw ArgumentError('Название задачи обязательно');
+    if (!['low','medium','high','critical'].contains(priority)) throw ArgumentError('Некорректный приоритет');
+    if (!['todo','inProgress','done','cancelled'].contains(status)) throw ArgumentError('Некорректный статус задачи');
     final project = await (db.select(db.projects)..where((p) => p.id.equals(projectId))).getSingleOrNull();
     if (project == null) throw StateError('Проект не существует');
     if (assigneeId != null && !await isMember(projectId, assigneeId)) throw StateError('Исполнитель не состоит в проекте');
@@ -87,10 +91,12 @@ class TaskRepository {
   }
   Future<void> updateTask(int id, {required String title, required String description, required String priority, int? deadline}) async {
     if (title.trim().isEmpty) throw ArgumentError('Название задачи обязательно');
+    if (!['low','medium','high','critical'].contains(priority)) throw ArgumentError('Некорректный приоритет');
     await (db.update(db.tasks)..where((t) => t.id.equals(id))).write(TasksCompanion(title: Value(title.trim()), description: Value(description.trim()), priority: Value(priority), deadline: Value(deadline), updatedAt: Value(_now())));
   }
   Future<void> changeStatus(int taskId, String next, {int? changedBy}) async {
     await db.transaction(() async {
+      if (!['todo','inProgress','done','cancelled'].contains(next)) throw ArgumentError('Некорректный статус задачи');
       final task = await (db.select(db.tasks)..where((t) => t.id.equals(taskId))).getSingle();
       if (task.status == next) return;
       final now = _now();
