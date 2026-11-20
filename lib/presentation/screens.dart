@@ -23,12 +23,12 @@ class _TasksScreenState extends State<TasksScreen> {
     return Column(children: [
       Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Поиск задач...', border: OutlineInputBorder()), onChanged: (v) => setState(() { search = v; pageLimit = 30; }))),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), child: Row(children: [
-        Expanded(child: DropdownButtonFormField<String?>(value: status, decoration: const InputDecoration(labelText: 'Статус', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)), items: const [DropdownMenuItem(value: null, child: Text('Все')), DropdownMenuItem(value: 'todo', child: Text('Ожидает')), DropdownMenuItem(value: 'inProgress', child: Text('В работе')), DropdownMenuItem(value: 'done', child: Text('Готово')), DropdownMenuItem(value: 'cancelled', child: Text('Отменено'))], onChanged: (v) => setState(() { status = v; pageLimit = 30; }))),
+        Expanded(child: DropdownButtonFormField<String?>(initialValue: status, decoration: const InputDecoration(labelText: 'Статус', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)), items: const [DropdownMenuItem(value: null, child: Text('Все')), DropdownMenuItem(value: 'todo', child: Text('Ожидает')), DropdownMenuItem(value: 'inProgress', child: Text('В работе')), DropdownMenuItem(value: 'done', child: Text('Готово')), DropdownMenuItem(value: 'cancelled', child: Text('Отменено'))], onChanged: (v) => setState(() { status = v; pageLimit = 30; }))),
         const SizedBox(width: 8),
-        Expanded(child: DropdownButtonFormField<String?>(value: priority, decoration: const InputDecoration(labelText: 'Приоритет', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)), items: const [DropdownMenuItem(value: null, child: Text('Все')), DropdownMenuItem(value: 'low', child: Text('Низкий')), DropdownMenuItem(value: 'medium', child: Text('Средний')), DropdownMenuItem(value: 'high', child: Text('Высокий')), DropdownMenuItem(value: 'critical', child: Text('Критический'))], onChanged: (v) => setState(() { priority = v; pageLimit = 30; }))),
+        Expanded(child: DropdownButtonFormField<String?>(initialValue: priority, decoration: const InputDecoration(labelText: 'Приоритет', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)), items: const [DropdownMenuItem(value: null, child: Text('Все')), DropdownMenuItem(value: 'low', child: Text('Низкий')), DropdownMenuItem(value: 'medium', child: Text('Средний')), DropdownMenuItem(value: 'high', child: Text('Высокий')), DropdownMenuItem(value: 'critical', child: Text('Критический'))], onChanged: (v) => setState(() { priority = v; pageLimit = 30; }))),
       ])),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Row(children: [
-        Expanded(child: StreamBuilder<List<User>>(stream: repo.watchUsers(), builder: (ctx, users) => DropdownButtonFormField<int?>(value: assignee, isExpanded: true, decoration: const InputDecoration(labelText: 'Исполнитель', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)), items: [const DropdownMenuItem<int?>(value: null, child: Text('Все исполнители')), ...(users.data ?? []).map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name)))], onChanged: (v) => setState(() { assignee = v; pageLimit = 30; })))),
+        Expanded(child: StreamBuilder<List<User>>(stream: repo.watchUsers(), builder: (ctx, users) => DropdownButtonFormField<int?>(initialValue: assignee, isExpanded: true, decoration: const InputDecoration(labelText: 'Исполнитель', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)), items: [const DropdownMenuItem<int?>(value: null, child: Text('Все исполнители')), ...(users.data ?? []).map((u) => DropdownMenuItem<int?>(value: u.id, child: Text(u.name)))], onChanged: (v) => setState(() { assignee = v; pageLimit = 30; })))),
         const SizedBox(width: 8),
         IconButton(tooltip: sortDeadline ? 'Сначала дедлайн' : 'Сначала новые', onPressed: () => setState(() => sortDeadline = !sortDeadline), icon: Icon(sortDeadline ? Icons.event : Icons.schedule)),
       ])),
@@ -85,7 +85,7 @@ Future<void> createTaskDialog(BuildContext context) async {
         onPressed: () async { final selected = await chooseUser(ctx, users, title: 'Выберите исполнителя', selectedId: userId); set(() => userId = selected); },
         icon: const Icon(Icons.person_search), label: Text(userId == null ? 'Исполнитель: не назначен' : 'Исполнитель: ${users.firstWhere((u) => u.id == userId).name}'),
       ),
-      DropdownButtonFormField<String>(value: priority, decoration: const InputDecoration(labelText: 'Приоритет'), items: const [DropdownMenuItem(value:'low',child:Text('Низкий')),DropdownMenuItem(value:'medium',child:Text('Средний')),DropdownMenuItem(value:'high',child:Text('Высокий')),DropdownMenuItem(value:'critical',child:Text('Критический'))], onChanged: (v) => set(() => priority = v ?? 'medium')),
+      DropdownButtonFormField<String>(initialValue: priority, decoration: const InputDecoration(labelText: 'Приоритет'), items: const [DropdownMenuItem(value:'low',child:Text('Низкий')),DropdownMenuItem(value:'medium',child:Text('Средний')),DropdownMenuItem(value:'high',child:Text('Высокий')),DropdownMenuItem(value:'critical',child:Text('Критический'))], onChanged: (v) => set(() => priority = v ?? 'medium')),
       TextButton.icon(onPressed: () async { final d = await showDatePicker(context: ctx, firstDate: DateTime.now().subtract(const Duration(days: 1)), lastDate: DateTime.now().add(const Duration(days: 3650)), initialDate: DateTime.now()); if (d != null) set(() => deadline = d); }, icon: const Icon(Icons.calendar_month), label: Text(deadline == null ? 'Выбрать дедлайн' : deadline!.toString().substring(0,10))),
     ])),
     actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')), FilledButton(onPressed: () async { try { await repo.createTask(title: title.text, description: desc.text, projectId: projectId, assigneeId: userId, priority: priority, deadline: deadline?.millisecondsSinceEpoch, changedBy: users.isEmpty ? null : users.first.id); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { if (ctx.mounted) showError(ctx, e); } }, child: const Text('Создать'))],
@@ -93,7 +93,7 @@ Future<void> createTaskDialog(BuildContext context) async {
 }
 Future<void> editTaskDialog(BuildContext context, Task task) async {
   final repo = context.read<TaskRepository>(); final title = TextEditingController(text: task.title); final desc = TextEditingController(text: task.description); String priority = task.priority; DateTime? deadline = task.deadline == null ? null : DateTime.fromMillisecondsSinceEpoch(task.deadline!);
-  await showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx,set) => AlertDialog(title: const Text('Редактировать задачу'), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller:title,decoration:const InputDecoration(labelText:'Название')),TextField(controller:desc,decoration:const InputDecoration(labelText:'Описание'),maxLines:3),DropdownButtonFormField<String>(value:priority,items:const [DropdownMenuItem(value:'low',child:Text('Низкий')),DropdownMenuItem(value:'medium',child:Text('Средний')),DropdownMenuItem(value:'high',child:Text('Высокий')),DropdownMenuItem(value:'critical',child:Text('Критический'))],onChanged:(v)=>set(()=>priority=v??'medium')),TextButton(onPressed:() async { final d=await showDatePicker(context:ctx,firstDate:DateTime.now().subtract(const Duration(days:1)),lastDate:DateTime.now().add(const Duration(days:3650)),initialDate:deadline??DateTime.now()); if(d!=null)set(()=>deadline=d); },child:Text(deadline?.toString().substring(0,10)??'Дедлайн не задан'))]),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Отмена')),FilledButton(onPressed:() async {try{await repo.updateTask(task.id,title:title.text,description:desc.text,priority:priority,deadline:deadline?.millisecondsSinceEpoch);if(ctx.mounted)Navigator.pop(ctx);}catch(e){if(ctx.mounted)showError(ctx,e);}},child:const Text('Сохранить'))])));
+  await showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx,set) => AlertDialog(title: const Text('Редактировать задачу'), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller:title,decoration:const InputDecoration(labelText:'Название')),TextField(controller:desc,decoration:const InputDecoration(labelText:'Описание'),maxLines:3),DropdownButtonFormField<String>(initialValue:priority,items:const [DropdownMenuItem(value:'low',child:Text('Низкий')),DropdownMenuItem(value:'medium',child:Text('Средний')),DropdownMenuItem(value:'high',child:Text('Высокий')),DropdownMenuItem(value:'critical',child:Text('Критический'))],onChanged:(v)=>set(()=>priority=v??'medium')),TextButton(onPressed:() async { final d=await showDatePicker(context:ctx,firstDate:DateTime.now().subtract(const Duration(days:1)),lastDate:DateTime.now().add(const Duration(days:3650)),initialDate:deadline??DateTime.now()); if(d!=null)set(()=>deadline=d); },child:Text(deadline?.toString().substring(0,10)??'Дедлайн не задан'))]),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Отмена')),FilledButton(onPressed:() async {try{await repo.updateTask(task.id,title:title.text,description:desc.text,priority:priority,deadline:deadline?.millisecondsSinceEpoch);if(ctx.mounted)Navigator.pop(ctx);}catch(e){if(ctx.mounted)showError(ctx,e);}},child:const Text('Сохранить'))])));
 }
 
 Future<void> showTaskDetails(BuildContext context, Task task) async {
@@ -169,11 +169,19 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
             onTap: () => showProjectTasks(ctx, p),
             trailing: PopupMenuButton<String>(
               onSelected: (v) async { try {
-                if (v == 'delete') await repo.deleteProject(p.id);
-                if (v == 'members') await manageMembersDialog(ctx, p);
-                if (v == 'edit') await editProjectDialog(ctx, p);
-                if (v == 'complete') await repo.updateProject(p.id, p.name, p.description, 'completed');
-                if (v == 'archive') await repo.updateProject(p.id, p.name, p.description, 'archived');
+                if (v == 'delete') {
+                  await repo.deleteProject(p.id);
+                } else if (v == 'members') {
+                  if (!ctx.mounted) return;
+                  await manageMembersDialog(ctx, p);
+                } else if (v == 'edit') {
+                  if (!ctx.mounted) return;
+                  await editProjectDialog(ctx, p);
+                } else if (v == 'complete') {
+                  await repo.updateProject(p.id, p.name, p.description, 'completed');
+                } else if (v == 'archive') {
+                  await repo.updateProject(p.id, p.name, p.description, 'archived');
+                }
               } catch (e) { if (ctx.mounted) showError(ctx, e); } },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'edit', child: Text('Редактировать')),
