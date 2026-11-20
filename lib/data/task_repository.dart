@@ -108,6 +108,10 @@ class TaskRepository {
     await db.transaction(() async {
       final task = await (db.select(db.tasks)..where((t) => t.id.equals(taskId))).getSingle();
       if (userId != null && !await isMember(task.projectId, userId)) throw StateError('Исполнитель не состоит в проекте');
+      if (userId != null && task.deadline != null) {
+        final assigned = await (db.select(db.tasks)..where((t) => t.id.isNotValue(taskId) & t.assigneeId.equals(userId) & t.deadline.equals(task.deadline!) & t.status.isNotIn(['done','cancelled']) & t.deletedAt.isNull())).get();
+        if (assigned.length >= 3) throw StateError('У исполнителя уже есть 3 незавершённые задачи с этим дедлайном');
+      }
       final now = _now();
       await (db.update(db.tasks)..where((t) => t.id.equals(taskId))).write(TasksCompanion(assigneeId: Value(userId), updatedAt: Value(now)));
       await db.into(db.taskHistory).insert(TaskHistoryCompanion.insert(taskId: taskId, previousStatus: Value(task.status), newStatus: task.status, changedBy: Value(changedBy), changedAt: now, details: Value('Исполнитель изменён: ${userId ?? "не назначен"}')));
@@ -124,8 +128,8 @@ class TaskRepository {
       await db.into(db.taskHistory).insert(TaskHistoryCompanion.insert(taskId: taskId, previousStatus: Value(current.status), newStatus: history.previousStatus!, changedBy: Value(changedBy), changedAt: now, details: const Value('Отмена последнего изменения')));
     });
   }
-  Future<void> softDeleteTask(int id) async => (db.update(db.tasks)..where((t) => t.id.equals(id))).write(TasksCompanion(deletedAt: Value(_now())));
-  Future<void> restoreTask(int id) async => (db.update(db.tasks)..where((t) => t.id.equals(id))).write(const TasksCompanion(deletedAt: Value(null)));
+  Future<void> softDeleteTask(int id) async { final now=_now(); await (db.update(db.tasks)..where((t) => t.id.equals(id))).write(TasksCompanion(deletedAt: Value(now), updatedAt: Value(now))); }
+  Future<void> restoreTask(int id) async { final now=_now(); await (db.update(db.tasks)..where((t) => t.id.equals(id))).write(TasksCompanion(deletedAt: const Value(null), updatedAt: Value(now))); }
   Future<void> permanentlyDeleteTask(int id) async => (db.delete(db.tasks)..where((t) => t.id.equals(id))).go();
 
   Stream<List<Comment>> watchComments(int taskId) => (db.select(db.comments)..where((c) => c.taskId.equals(taskId))..orderBy([(c) => OrderingTerm.asc(c.createdAt)])).watch();
