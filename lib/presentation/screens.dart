@@ -146,6 +146,7 @@ class DashboardScreen extends StatelessWidget {
         const Text('Прогресс проектов',style:TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
         StreamBuilder<List<Map<String,Object?>>>(stream:repo.watchProjectProgress(),builder:(c,v)=>Column(children:(v.data??[]).map((r){final total=(r['total'] as int?)??0;final done=(r['done'] as int?)??0;final p=total==0?0.0:done/total;return ListTile(title:Text(r['name'].toString()),subtitle:LinearProgressIndicator(value:p),trailing:Text('${(p*100).round()}%'));}).toList())),
         const SizedBox(height:12),
+        OutlinedButton.icon(onPressed:()async{try{await repo.seedPerformanceData();if(ctx.mounted)showError(ctx,'Тестовый набор: 1 000 пользователей, 100 проектов, 10 000 задач создан');}catch(e){if(ctx.mounted)showError(ctx,e);}},icon:const Icon(Icons.dataset),label:const Text('Создать тестовую базу 1k / 100 / 10k')),
         OutlinedButton.icon(onPressed:()async{try{final result=await repo.compareIndexPerformance();if(ctx.mounted)showDialog(context:ctx,builder:(dctx)=>AlertDialog(title:const Text('Сравнение индексов'),content:Text('С индексом: ${result['withIndexMicros']} мкс\\nБез индекса: ${result['withoutIndexMicros']} мкс\\nПовторений: 20'),actions:[TextButton(onPressed:()=>Navigator.pop(dctx),child:const Text('Закрыть'))]));}catch(e){if(ctx.mounted)showError(ctx,e);}},icon:const Icon(Icons.speed),label:const Text('Сравнить запрос с индексом и без')),
       ]);
     });
